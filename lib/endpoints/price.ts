@@ -11,6 +11,8 @@ export async function getTokenPrice(token: string, chain?: string) {
   const data: any = await res.json();
 
   let pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : [];
+  // Chi giu cap ma token dang hoi la baseToken (de priceUsd dung la gia token nay).
+  pairs = pairs.filter((p) => (p?.baseToken?.address || "").toLowerCase() === addr);
   if (chain) {
     const c = chain.toLowerCase();
     const map: Record<string, string> = { eth: "ethereum", bnb: "bsc", base: "base" };
