@@ -229,6 +229,31 @@ export const CATALOG: CatalogItem[] = [
       },
     },
   },
+  {
+    key: "snapshot",
+    path: "/api/snapshot",
+    title: "Token Snapshot",
+    description:
+      "One-call token snapshot: market (price, liquidity, volume), on-chain supply, and GoPlus safety flags with a quick OK/CAUTION/DANGER read. Replaces chaining price + supply + safety into one call. Body: { token, chain } (eth, bnb, base).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        token: { type: "string", description: "Token contract address." },
+        chain: { type: "string", description: "eth, bnb, base." },
+      },
+      required: ["token", "chain"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        safetyVerdict: { type: "string", enum: ["OK", "CAUTION", "DANGER", "UNKNOWN"] },
+        riskFlags: { type: "array", items: { type: "string" } },
+        market: { type: "object" },
+        supply: { type: "object" },
+        safety: { type: "object" },
+      },
+    },
+  },
 ];
 
 export function priceOf(key: string): string {

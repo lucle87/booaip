@@ -49,6 +49,8 @@ export async function GET() {
     },
     servers: [{ url: BASE_URL }],
     "x-docs": { llmsTxt: BASE_URL + "/llms.txt" },
+    "x-guidance":
+      "booAIP provides crypto/web3 ground-truth data for AI agents. Pick the endpoint that matches the task: /api/snapshot for a one-call market + supply + safety read on a token (best for pre-trade screening); /api/price for price only; /api/tvl, /api/yields, /api/stablecoins, /api/chains for DeFi metrics; /api/feargreed for sentiment; /api/gas, /api/ens, /api/supply for on-chain reads; /api/sanctions for OFAC wallet screening. Each endpoint is a separate paid POST; pay per call via x402 (USDC on Base). For yields, pass safeOnly:true to drop suspicious pools.",
     x402Version: 2,
     "x-discovery": { ownershipProofs: [PAY_TO] },
     paths,

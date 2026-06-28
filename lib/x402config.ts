@@ -36,6 +36,7 @@ const DEFAULT_PRICES: Record<string, string> = {
   ens: "0.005",
   sanctions: "0.01",
   supply: "0.01",
+  snapshot: "0.015",
 };
 
 // Next nuot dau $ trong .env (xem bai hoc base-rugcheck), nen chuan hoa lai.
