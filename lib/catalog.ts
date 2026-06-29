@@ -280,6 +280,29 @@ export const CATALOG: CatalogItem[] = [
       },
     },
   },
+  {
+    key: "derivatives",
+    path: "/api/derivatives",
+    title: "Multi-Exchange Derivatives",
+    description:
+      "Perp funding rate + open interest for a coin across Binance, Bybit, OKX, and Hyperliquid in one call. Funding normalized to annualized APR for fair cross-venue comparison, plus funding spread (arbitrage/divergence signal), total OI in USD, and a funding-based sentiment read (crowded long/short). Body: { symbol } (e.g. BTC, ETH, SOL). Public exchange data; heuristic signals, not financial advice.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Coin symbol, e.g. BTC, ETH, SOL." },
+      },
+      required: ["symbol"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        venues: { type: "array" },
+        aggregate: { type: "object" },
+        fundingSpread: { type: "object" },
+        signals: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
 ];
 
 export function priceOf(key: string): string {

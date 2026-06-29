@@ -38,6 +38,7 @@ const DEFAULT_PRICES: Record<string, string> = {
   supply: "0.01",
   snapshot: "0.015",
   wallet: "0.01",
+  derivatives: "0.01",
 };
 
 // Next nuot dau $ trong .env (xem bai hoc base-rugcheck), nen chuan hoa lai.
