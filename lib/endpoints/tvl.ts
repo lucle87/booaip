@@ -2,11 +2,12 @@
 // Nguon: https://api.llama.fi/protocol/{slug}
 
 const UA = "booAIP/1.0 (+https://booaip.vercel.app)";
+import { fetchWithTimeout } from "@/lib/http";
 
 export async function getProtocolTvl(slug: string) {
   const s = slug.toLowerCase().trim().replace(/\s+/g, "-");
   const url = "https://api.llama.fi/protocol/" + encodeURIComponent(s);
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
+  const res = await fetchWithTimeout(url, { timeoutMs: 6000, headers: { "User-Agent": UA } });
   if (res.status === 404) {
     return { protocol: s, found: false, message: "Protocol not found on DefiLlama. Use the DefiLlama slug (e.g. 'aave', 'uniswap', 'lido')." };
   }

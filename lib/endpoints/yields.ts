@@ -1,3 +1,4 @@
+import { fetchJson } from "@/lib/http";
 // Tim pool APY cao tu DefiLlama yields (free, khong can key) + LOP LOC RUI RO.
 // Nguon: https://yields.llama.fi/pools
 import { cached } from "@/lib/cache";
@@ -22,12 +23,7 @@ export async function getYields(
   safeOnly = false
 ) {
   const data: any = await cached("yields:pools", 60000, async () => {
-    const res = await fetch("https://yields.llama.fi/pools", {
-      headers: { "User-Agent": UA },
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("DefiLlama yields HTTP " + res.status);
-    return res.json();
+    return fetchJson("https://yields.llama.fi/pools", { timeoutMs: 7000, headers: { "User-Agent": UA } });
   });
   let pools: any[] = Array.isArray(data?.data) ? data.data : [];
 

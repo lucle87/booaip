@@ -8,10 +8,12 @@
 
 const UA = "booAIP/1.0 (+https://booaip.vercel.app)";
 
-async function getJson(url: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(url, { headers: { "User-Agent": UA, ...(init?.headers || {}) }, cache: "no-store", ...init });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.json();
+import { fetchJson } from "@/lib/http";
+import { cached } from "@/lib/cache";
+
+// Moi san timeout 4s: san nao cham bi bo qua (ok=false), khong keo ca endpoint.
+async function getJson(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<any> {
+  return fetchJson(url, { timeoutMs: 4000, method: init?.method, headers: init?.headers, body: init?.body });
 }
 
 type Venue = {
@@ -98,7 +100,10 @@ async function hyperliquid(sym: string): Promise<Venue> {
 export async function getDerivatives(symbol: string) {
   const sym = symbol.toUpperCase().replace(/USDT$|-USDT-SWAP$|PERP$/i, "").trim();
   if (!sym) throw new Error("Missing symbol (e.g. BTC, ETH, SOL).");
+  return cached("derivatives:" + sym, 20000, () => computeDerivatives(sym));
+}
 
+async function computeDerivatives(sym: string) {
   const venues = await Promise.all([binance(sym), bybit(sym), okx(sym), hyperliquid(sym)]);
   const ok = venues.filter((v) => v.ok && v.fundingAprPct != null);
 

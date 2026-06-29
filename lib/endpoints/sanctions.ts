@@ -1,6 +1,7 @@
 // Wallet sanctions screen: doi chieu dia chi voi danh sach OFAC SDN crypto.
 // Nguon: mirror cong dong cua 0xB10C (cap nhat tu OFAC), file text dia chi ETH/EVM.
 import { isAddress } from "viem";
+import { fetchWithTimeout } from "@/lib/http";
 
 const LIST_URL =
   "https://raw.githubusercontent.com/0xB10C/ofac-sanctioned-digital-currency-addresses/lists/sanctioned_addresses_ETH.txt";
@@ -10,10 +11,7 @@ let cache: { at: number; set: Set<string> } | null = null;
 
 async function loadList(): Promise<Set<string>> {
   if (cache && Date.now() - cache.at < TTL) return cache.set;
-  const res = await fetch(LIST_URL, {
-    headers: { "User-Agent": "booAIP/1.0" },
-    cache: "no-store",
-  });
+  const res = await fetchWithTimeout(LIST_URL, { timeoutMs: 6000, headers: { "User-Agent": "booAIP/1.0" } });
   if (!res.ok) throw new Error("OFAC list HTTP " + res.status);
   const text = await res.text();
   const set = new Set(

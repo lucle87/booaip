@@ -2,13 +2,12 @@
 // Nguon: https://api.dexscreener.com/latest/dex/tokens/{address}
 
 const UA = "booAIP/1.0 (+https://booaip.vercel.app)";
+import { fetchJson } from "@/lib/http";
 
 export async function getTokenPrice(token: string, chain?: string) {
   const addr = token.toLowerCase();
   const url = "https://api.dexscreener.com/latest/dex/tokens/" + addr;
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-  if (!res.ok) throw new Error("DexScreener HTTP " + res.status);
-  const data: any = await res.json();
+  const data: any = await fetchJson(url, { timeoutMs: 5000, headers: { "User-Agent": UA } });
 
   let pairs: any[] = Array.isArray(data?.pairs) ? data.pairs : [];
   // Chi giu cap ma token dang hoi la baseToken (de priceUsd dung la gia token nay).

@@ -1,4 +1,5 @@
 // GoPlus Token Security (EVM) cho lop safety cua snapshot. Free, khong key.
+import { fetchJson } from "@/lib/http";
 // chain_id: eth=1, bnb=56, base=8453.
 import { cached } from "@/lib/cache";
 
@@ -45,9 +46,7 @@ export async function fetchSafety(chain: string, token: string): Promise<Safety>
   try {
     return await cached(key, 60000, async () => {
       const url = "https://api.gopluslabs.io/api/v1/token_security/" + chainId + "?contract_addresses=" + addr;
-      const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-      if (!res.ok) return EMPTY;
-      const data: any = await res.json();
+      const data: any = await fetchJson(url, { timeoutMs: 6000, headers: { "User-Agent": UA } });
       const rec = data?.result?.[addr];
       if (!rec) return EMPTY;
       const holders: any[] = Array.isArray(rec.holders) ? rec.holders : [];

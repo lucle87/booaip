@@ -1,14 +1,10 @@
 // Theo doi stablecoin tu DefiLlama (free, khong can key).
 // Nguon: https://stablecoins.llama.fi/stablecoins?includePrices=true
 const UA = "booAIP/1.0";
+import { fetchJson } from "@/lib/http";
 
 export async function getStablecoin(symbol?: string) {
-  const res = await fetch("https://stablecoins.llama.fi/stablecoins?includePrices=true", {
-    headers: { "User-Agent": UA },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("DefiLlama stablecoins HTTP " + res.status);
-  const data: any = await res.json();
+  const data: any = await fetchJson("https://stablecoins.llama.fi/stablecoins?includePrices=true", { timeoutMs: 6000, headers: { "User-Agent": UA } });
   let assets: any[] = Array.isArray(data?.peggedAssets) ? data.peggedAssets : [];
 
   function shape(a: any) {

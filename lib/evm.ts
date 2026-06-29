@@ -16,5 +16,5 @@ export function clientFor(chain: string) {
   const chainObj = CHAINS[c];
   if (!chainObj) throw new Error("Unsupported chain: " + chain + " (use eth, bnb, base).");
   const rpc = rpcFor(c);
-  return createPublicClient({ chain: chainObj, transport: http(rpc) });
+  return createPublicClient({ chain: chainObj, transport: http(rpc, { timeout: 6000, retryCount: 1, retryDelay: 300 }) });
 }

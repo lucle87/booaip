@@ -2,12 +2,12 @@
 // Nguon: https://api.alternative.me/fng/?limit=2
 
 const UA = "booAIP/1.0 (+https://booaip.vercel.app)";
+import { fetchJson } from "@/lib/http";
+import { cached } from "@/lib/cache";
 
 export async function getFearGreed() {
   const url = "https://api.alternative.me/fng/?limit=2";
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-  if (!res.ok) throw new Error("alternative.me HTTP " + res.status);
-  const data: any = await res.json();
+  const data: any = await cached("feargreed", 60000, () => fetchJson(url, { timeoutMs: 5000, headers: { "User-Agent": UA } }));
   const arr: any[] = Array.isArray(data?.data) ? data.data : [];
   if (!arr.length) throw new Error("No data");
 

@@ -6,7 +6,7 @@ import { rpcFor } from "@/lib/x402config";
 
 function mainnetClient() {
   const rpc = rpcFor("eth");
-  return createPublicClient({ chain: mainnet, transport: http(rpc) });
+  return createPublicClient({ chain: mainnet, transport: http(rpc, { timeout: 6000, retryCount: 1, retryDelay: 300 }) });
 }
 
 export async function resolveEns(query: string) {

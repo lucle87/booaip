@@ -1,14 +1,10 @@
 // Tong quan TVL theo chain tu DefiLlama (free, khong can key).
 // Nguon: https://api.llama.fi/v2/chains
 const UA = "booAIP/1.0";
+import { fetchJson } from "@/lib/http";
 
 export async function getChain(chain?: string) {
-  const res = await fetch("https://api.llama.fi/v2/chains", {
-    headers: { "User-Agent": UA },
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("DefiLlama chains HTTP " + res.status);
-  let arr: any[] = await res.json();
+  let arr: any[] = await fetchJson("https://api.llama.fi/v2/chains", { timeoutMs: 6000, headers: { "User-Agent": UA } });
   if (!Array.isArray(arr)) arr = [];
   arr.sort((a, b) => (b.tvl || 0) - (a.tvl || 0));
   const total = arr.reduce((s, c) => s + (c.tvl || 0), 0);
