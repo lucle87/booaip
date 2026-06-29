@@ -35,7 +35,7 @@ export const CATALOG: CatalogItem[] = [
       whenToUse:
         "Use when you have a token contract address and need its current price, liquidity, and volume. Prefer /api/snapshot if you also need supply and safety in the same call.",
       input: "POST JSON: { token (contract address), chain? (eth|bnb|base, auto-detected if omitted) }.",
-      output: "priceUsd, liquidityUsd, volume24hUsd, fdvUsd, marketCapUsd, the DEX and pair used. found=false if no liquid pair exists.",
+      output: "priceUsd, priceChange 5m/1h/6h/24h, liquidityUsd, volume 1h/24h, txns24h (buys/sells), pairAgeHours, fdvUsd, marketCapUsd, the DEX and pair used. found=false if no liquid pair exists.",
       paymentFlow: PAYFLOW,
     },
     inputSchema: {
@@ -54,6 +54,10 @@ export const CATALOG: CatalogItem[] = [
         priceUsd: { type: "number", description: "Current USD price." },
         liquidityUsd: { type: "number", description: "USD liquidity in the deepest pair." },
         volume24hUsd: { type: "number", description: "24h trading volume in USD." },
+        priceChange1hPct: { type: "number", description: "1h price change, percent." },
+        priceChange6hPct: { type: "number", description: "6h price change, percent." },
+        txns24h: { type: "object", description: "24h buy/sell transaction counts." },
+        pairAgeHours: { type: "number", description: "Age of the trading pair in hours (newness signal)." },
         fdvUsd: { type: "number", description: "Fully diluted valuation in USD." },
         marketCapUsd: { type: "number", description: "Market cap in USD." },
       },
@@ -389,7 +393,7 @@ export const CATALOG: CatalogItem[] = [
       whenToUse:
         "Use to read perp positioning for a coin: is funding crowded long/short, and is there a fundable spread between exchanges. Pair with /api/feargreed for market-wide sentiment.",
       input: "POST JSON: { symbol (e.g. BTC, ETH, SOL) }.",
-      output: "venues[] (per-exchange funding APR + OI), aggregate (avg funding APR, total OI, sentiment), fundingSpread (high vs low venue), signals[].",
+      output: "venues[] (per-exchange funding APR + OI), aggregate (avg funding APR, total OI, sentiment), retailPositioning (Binance long/short account ratio), fundingSpread (high vs low venue), signals[].",
       paymentFlow: PAYFLOW,
     },
     inputSchema: {
@@ -404,8 +408,9 @@ export const CATALOG: CatalogItem[] = [
       properties: {
         venues: { type: "array", description: "Per-exchange funding APR, interval, and open interest in USD." },
         aggregate: { type: "object", description: "venuesReporting, avgFundingAprPct, totalOpenInterestUsd, sentiment." },
+        retailPositioning: { type: "object", description: "Binance global long/short account ratio: longShortRatio, longAccountPct, shortAccountPct." },
         fundingSpread: { type: "object", description: "Highest vs lowest funding venue and the spread in APR percent." },
-        signals: { type: "array", items: { type: "string" }, description: "Heuristic flags (crowding, large spread)." },
+        signals: { type: "array", items: { type: "string" }, description: "Heuristic flags (funding crowding, large spread, retail long/short, funding-vs-retail divergence)." },
       },
     },
   },

@@ -51,6 +51,31 @@ async function binance(sym: string): Promise<Venue> {
   } catch { return dead("binance", 8); }
 }
 
+// Long/short ACCOUNT ratio cua Binance (free): bao nhieu % tai khoan dang long vs short.
+// Tin hieu "dam dong nghieng dau" - bo sung cho funding (ai tra phi). Fail mem (null).
+async function longShort(sym: string): Promise<any> {
+  try {
+    const s = sym + "USDT";
+    const arr = await getJson(
+      "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=" + s + "&period=1h&limit=1"
+    );
+    const r = Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+    if (!r) return null;
+    const ratio = r?.longShortRatio != null ? Number(r.longShortRatio) : null;
+    const longPct = r?.longAccount != null ? Number(r.longAccount) * 100 : null;
+    const shortPct = r?.shortAccount != null ? Number(r.shortAccount) * 100 : null;
+    if (ratio == null && longPct == null) return null;
+    return {
+      source: "binance",
+      longShortRatio: ratio != null ? Number(ratio.toFixed(3)) : null,
+      longAccountPct: longPct != null ? Number(longPct.toFixed(1)) : null,
+      shortAccountPct: shortPct != null ? Number(shortPct.toFixed(1)) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function bybit(sym: string): Promise<Venue> {
   try {
     const s = sym + "USDT";
@@ -104,7 +129,10 @@ export async function getDerivatives(symbol: string) {
 }
 
 async function computeDerivatives(sym: string) {
-  const venues = await Promise.all([binance(sym), bybit(sym), okx(sym), hyperliquid(sym)]);
+  const [venues, retail] = await Promise.all([
+    Promise.all([binance(sym), bybit(sym), okx(sym), hyperliquid(sym)]),
+    longShort(sym),
+  ]);
   const ok = venues.filter((v) => v.ok && v.fundingAprPct != null);
 
   let spread: any = null;
@@ -135,6 +163,17 @@ async function computeDerivatives(sym: string) {
   }
   if (sentiment === "crowded_long") signals.push("High positive funding across venues: market heavily long, elevated long-squeeze risk.");
   if (sentiment === "crowded_short") signals.push("Strongly negative funding: market heavily short, short-squeeze risk.");
+
+  // Tin hieu long/short tai khoan (retail): doi chieu voi funding de phat hien lech.
+  if (retail && retail.longShortRatio != null) {
+    if (retail.longShortRatio >= 2) signals.push("Retail accounts heavily long (L/S ratio " + retail.longShortRatio + "): crowded long positioning.");
+    else if (retail.longShortRatio <= 0.5) signals.push("Retail accounts heavily short (L/S ratio " + retail.longShortRatio + "): crowded short positioning.");
+    // lech giua funding va retail: funding am (smart money short) nhung retail long manh = canh bao
+    if (avgApr != null && avgApr < 0 && retail.longShortRatio >= 1.5) {
+      signals.push("Divergence: funding negative while retail is long -- retail leaning against funding.");
+    }
+  }
+
   if (!signals.length) signals.push("No extreme funding or cross-venue divergence detected.");
 
   return {
@@ -155,8 +194,9 @@ async function computeDerivatives(sym: string) {
       totalOpenInterestUsd: totalOiUsd || null,
       sentiment,
     },
+    retailPositioning: retail,
     fundingSpread: spread,
     signals,
-    note: "Funding normalized to annualized APR for cross-venue comparison (CEX charge ~8h, Hyperliquid hourly). Open interest in USD (Binance/Hyperliquid derived from contracts x mark price; Bybit/OKX report USD directly). Sentiment/signals are heuristic from funding sign and cross-venue spread, not financial advice. Data from public exchange APIs; a venue is omitted if it lacks the pair or is rate-limited.",
+    note: "Funding normalized to annualized APR for cross-venue comparison (CEX charge ~8h, Hyperliquid hourly). Open interest in USD (Binance/Hyperliquid derived from contracts x mark price; Bybit/OKX report USD directly). retailPositioning is Binance global long/short ACCOUNT ratio (>1 = more accounts long). Sentiment/signals are heuristic, not financial advice. Data from public exchange APIs; a venue or signal is omitted if unavailable.",
   };
 }

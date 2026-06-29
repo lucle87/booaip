@@ -27,6 +27,11 @@ export async function getTokenPrice(token: string, chain?: string) {
   pairs.sort((a, b) => (b?.liquidity?.usd || 0) - (a?.liquidity?.usd || 0));
   const p = pairs[0];
 
+  // Tuoi pair (DexScreener tra pairCreatedAt la moc ms). Tin hieu "moi/cu" cho rug context.
+  const createdAtMs = p?.pairCreatedAt ? Number(p.pairCreatedAt) : null;
+  const pairAgeHours = createdAtMs ? Number(((Date.now() - createdAtMs) / 3_600_000).toFixed(1)) : null;
+  const tx24 = p?.txns?.h24 || {};
+
   return {
     found: true,
     token: addr,
@@ -35,11 +40,18 @@ export async function getTokenPrice(token: string, chain?: string) {
     chain: p?.chainId || null,
     dex: p?.dexId || null,
     priceUsd: p?.priceUsd ? Number(p.priceUsd) : null,
+    priceChange5mPct: p?.priceChange?.m5 ?? null,
+    priceChange1hPct: p?.priceChange?.h1 ?? null,
+    priceChange6hPct: p?.priceChange?.h6 ?? null,
     priceChange24hPct: p?.priceChange?.h24 ?? null,
     liquidityUsd: p?.liquidity?.usd ?? null,
+    volume1hUsd: p?.volume?.h1 ?? null,
     volume24hUsd: p?.volume?.h24 ?? null,
+    txns24h: { buys: tx24?.buys ?? null, sells: tx24?.sells ?? null },
     fdvUsd: p?.fdv ?? null,
     marketCapUsd: p?.marketCap ?? null,
+    pairCreatedAt: createdAtMs,
+    pairAgeHours,
     pairUrl: p?.url || null,
     pairsConsidered: pairs.length,
   };
