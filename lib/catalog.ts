@@ -254,6 +254,32 @@ export const CATALOG: CatalogItem[] = [
       },
     },
   },
+  {
+    key: "wallet",
+    path: "/api/wallet",
+    title: "Wallet Profile",
+    description:
+      "On-chain wallet profile from direct RPC reads plus OFAC screening: native balance, tx count (activity level), contract-vs-EOA status, sanctions verdict, whale flag, and a heuristic wallet score (0-100). Body: { wallet, chain } (eth, bnb, base). Snapshot only; wallet age and DeFi/bridge/NFT history need an indexer and are not included.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wallet: { type: "string", description: "EVM wallet address." },
+        chain: { type: "string", description: "eth, bnb, base." },
+      },
+      required: ["wallet", "chain"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        walletScore: { type: "number" },
+        isWhale: { type: "boolean" },
+        sanctioned: { type: "boolean" },
+        txCount: { type: "number" },
+        activityLevel: { type: "string" },
+        flags: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
 ];
 
 export function priceOf(key: string): string {
