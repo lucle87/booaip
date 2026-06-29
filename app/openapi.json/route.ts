@@ -14,6 +14,12 @@ export async function GET() {
         operationId: item.key,
         summary: item.title,
         description: item.description,
+        "x-agent-guidance": {
+          whenToUse: item.agentGuidance.whenToUse,
+          input: item.agentGuidance.input,
+          output: item.agentGuidance.output,
+          paymentFlow: item.agentGuidance.paymentFlow,
+        },
         "x-payment-info": {
           x402Version: 2,
           price: { mode: "fixed", amount: priceUsd, currency: "USD" },

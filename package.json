@@ -16,7 +16,8 @@
     "@x402/core": "latest",
     "@x402/evm": "latest",
     "@x402/extensions": "latest",
-    "@coinbase/x402": "latest"
+    "@coinbase/x402": "latest",
+    "mppx": "latest"
   },
   "devDependencies": {
     "@types/node": "^20",

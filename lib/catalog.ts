@@ -1,6 +1,15 @@
-// Danh muc endpoint cua booAIP. Them endpoint moi = them mot route + mot muc o day.
-// openapi.json, llms.txt va trang chu deu tu sinh tu danh sach nay.
+// Danh muc endpoint. openapi.json, llms.txt, trang chu tu sinh tu day.
+// Moi muc viet theo huong AGENT-FIRST (loi khuyen Lucas/Merit): ten ro, mo ta
+// "khi nao agent nen dung + hop workflow nao", input co vi du, output mo ta field chinh,
+// va agentGuidance (whenToUse / input / output / payment) de agent quyet dinh nhanh.
 import { priceUsdFor } from "@/lib/x402config";
+
+export type AgentGuidance = {
+  whenToUse: string;
+  input: string;
+  output: string;
+  paymentFlow: string;
+};
 
 export type CatalogItem = {
   key: string;
@@ -9,32 +18,44 @@ export type CatalogItem = {
   description: string;
   inputSchema: any;
   outputSchema: any;
+  agentGuidance: AgentGuidance;
 };
+
+const PAYFLOW =
+  "First call returns HTTP 402 with an x402 payment requirement (USDC on Base). Pay with an x402 client, then retry the same request to get 200.";
 
 export const CATALOG: CatalogItem[] = [
   {
     key: "price",
     path: "/api/price",
-    title: "Token Price",
+    title: "Token Price & Liquidity",
     description:
-      "Token price, liquidity, 24h volume and FDV from DEX pairs (DexScreener). Body: { token, chain? }.",
+      "Live price, USD liquidity, 24h volume, FDV and market cap for any token, sourced from the deepest DEX pair on DexScreener. Use this when an agent needs the current market value or tradability of a specific token contract before quoting, swapping, or reporting. Fits naturally before a swap, in a portfolio readout, or as the market leg of a token research workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use when you have a token contract address and need its current price, liquidity, and volume. Prefer /api/snapshot if you also need supply and safety in the same call.",
+      input: "POST JSON: { token (contract address), chain? (eth|bnb|base, auto-detected if omitted) }.",
+      output: "priceUsd, liquidityUsd, volume24hUsd, fdvUsd, marketCapUsd, the DEX and pair used. found=false if no liquid pair exists.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        token: { type: "string", description: "Token contract address." },
-        chain: { type: "string", description: "Optional: eth, bnb, base." },
+        token: { type: "string", description: "Token contract address (0x...).", examples: ["0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"] },
+        chain: { type: "string", description: "Optional chain hint: eth, bnb, base. Auto-detected if omitted.", examples: ["bnb"] },
       },
       required: ["token"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        symbol: { type: "string" },
-        priceUsd: { type: "number" },
-        liquidityUsd: { type: "number" },
-        volume24hUsd: { type: "number" },
-        fdvUsd: { type: "number" },
+        found: { type: "boolean", description: "Whether a liquid DEX pair was found." },
+        symbol: { type: "string", description: "Token symbol." },
+        priceUsd: { type: "number", description: "Current USD price." },
+        liquidityUsd: { type: "number", description: "USD liquidity in the deepest pair." },
+        volume24hUsd: { type: "number", description: "24h trading volume in USD." },
+        fdvUsd: { type: "number", description: "Fully diluted valuation in USD." },
+        marketCapUsd: { type: "number", description: "Market cap in USD." },
       },
     },
   },
@@ -43,145 +64,195 @@ export const CATALOG: CatalogItem[] = [
     path: "/api/tvl",
     title: "DeFi Protocol TVL",
     description:
-      "DeFi protocol TVL, chains and 1d/7d change (DefiLlama). Body: { protocol } using the DefiLlama slug (e.g. aave, uniswap, lido).",
+      "Total value locked for a DeFi protocol, the chains it spans, and 1-day / 7-day change, from DefiLlama. Use when an agent needs to size or compare a protocol's footprint, or detect TVL inflows/outflows, inside a DeFi research or risk workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use when you have a protocol's DefiLlama slug and need its TVL and recent change. For chain-level TVL use /api/chains instead.",
+      input: "POST JSON: { protocol } where protocol is the DefiLlama slug (e.g. 'aave', 'uniswap', 'lido').",
+      output: "tvlUsd, list of chains, change1dPct, change7dPct. found=false for an unknown slug.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        protocol: { type: "string", description: "DefiLlama protocol slug." },
+        protocol: { type: "string", description: "DefiLlama protocol slug (lowercase).", examples: ["aave", "uniswap", "lido"] },
       },
       required: ["protocol"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        protocol: { type: "string" },
-        tvlUsd: { type: "number" },
-        chains: { type: "array", items: { type: "string" } },
-        change1dPct: { type: "number" },
-        change7dPct: { type: "number" },
+        found: { type: "boolean", description: "Whether the protocol slug was found." },
+        protocol: { type: "string", description: "Protocol name." },
+        tvlUsd: { type: "number", description: "Total value locked in USD." },
+        chains: { type: "array", items: { type: "string" }, description: "Chains the protocol is deployed on." },
+        change1dPct: { type: "number", description: "1-day TVL change, percent." },
+        change7dPct: { type: "number", description: "7-day TVL change, percent." },
       },
     },
   },
   {
     key: "feargreed",
     path: "/api/feargreed",
-    title: "Fear & Greed Index",
+    title: "Crypto Fear & Greed Index",
     description:
-      "Current crypto Fear & Greed Index with 1-day change (alternative.me). Body: {} (no params).",
+      "The current crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed) with its 1-day change, from alternative.me. Use when an agent needs a quick market-wide sentiment read to frame a recommendation or condition a strategy. No parameters.",
+    agentGuidance: {
+      whenToUse:
+        "Use for a fast market-wide sentiment gauge. Takes no input. Pair with /api/derivatives for per-coin positioning sentiment.",
+      input: "POST JSON: {} (no parameters).",
+      output: "value (0-100), classification (e.g. 'Extreme Fear'), previousValue, change1d.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: { type: "object", properties: {}, required: [] },
     outputSchema: {
       type: "object",
       properties: {
-        value: { type: "number" },
-        classification: { type: "string" },
-        change1d: { type: "number" },
+        value: { type: "number", description: "Index value 0-100." },
+        classification: { type: "string", description: "Text label, e.g. 'Extreme Fear', 'Greed'." },
+        change1d: { type: "number", description: "Change vs. previous day." },
       },
     },
   },
   {
     key: "yields",
     path: "/api/yields",
-    title: "Yield Finder",
+    title: "DeFi Yield Finder",
     description:
-      "Top APY yield pools by token symbol and chain (DefiLlama). Body: { symbol?, chain?, limit? }.",
+      "Top APY yield pools filtered by token symbol and/or chain, from DefiLlama, optionally restricted to lower-risk pools. Use when an agent needs to find where an asset can earn yield, inside a treasury, allocation, or 'where to park stablecoins' workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use to find yield opportunities for a token (e.g. best USDC APY) optionally on a specific chain. Set safeOnly=true to bias toward audited/stable pools.",
+      input: "POST JSON: { symbol? (e.g. USDC), chain? (e.g. base), limit? (1-20, default 5), safeOnly? (boolean) }.",
+      output: "pools[] with project, chain, symbol, apy, tvlUsd, sorted by APY.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "Token symbol (e.g. USDC)." },
-        chain: { type: "string", description: "Optional chain filter." },
-        limit: { type: "number", description: "Max pools 1-20." },
+        symbol: { type: "string", description: "Token symbol to find yields for.", examples: ["USDC", "ETH"] },
+        chain: { type: "string", description: "Optional chain filter.", examples: ["base", "arbitrum"] },
+        limit: { type: "number", description: "Max pools to return, 1-20 (default 5)." },
+        safeOnly: { type: "boolean", description: "If true, bias toward lower-risk pools." },
       },
       required: [],
     },
     outputSchema: {
       type: "object",
       properties: {
-        count: { type: "number" },
-        pools: { type: "array", items: { type: "object" } },
+        count: { type: "number", description: "Number of pools returned." },
+        pools: { type: "array", items: { type: "object" }, description: "Pools with project, chain, symbol, apy, tvlUsd." },
       },
     },
   },
   {
     key: "stablecoins",
     path: "/api/stablecoins",
-    title: "Stablecoin Monitor",
+    title: "Stablecoin Peg Monitor",
     description:
-      "Stablecoin circulating supply, price and peg deviation (DefiLlama). Body: { symbol? }.",
+      "Circulating supply, current price and peg deviation for a stablecoin (or the top 10), from DefiLlama. Use when an agent needs to verify a stablecoin is holding its peg or size its market, inside a risk-check or treasury workflow before holding/accepting it.",
+    agentGuidance: {
+      whenToUse:
+        "Use to check a stablecoin's peg health and supply before treating it as safe. Omit symbol to get the top 10 by market cap.",
+      input: "POST JSON: { symbol? (e.g. USDT). Omit for top 10 }.",
+      output: "circulatingUsd, price, pegDeviationPct (distance from $1).",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
-      properties: { symbol: { type: "string", description: "Stablecoin symbol (e.g. USDT). Omit for top 10." } },
+      properties: { symbol: { type: "string", description: "Stablecoin symbol. Omit for top 10.", examples: ["USDT", "DAI"] } },
       required: [],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        symbol: { type: "string" },
-        circulatingUsd: { type: "number" },
-        pegDeviationPct: { type: "number" },
+        found: { type: "boolean", description: "Whether the symbol was found." },
+        symbol: { type: "string", description: "Stablecoin symbol." },
+        circulatingUsd: { type: "number", description: "Circulating supply in USD." },
+        pegDeviationPct: { type: "number", description: "Deviation from $1.00 peg, percent." },
       },
     },
   },
   {
     key: "chains",
     path: "/api/chains",
-    title: "Chain Overview",
+    title: "Chain TVL Overview",
     description:
-      "Chain TVL, rank and dominance (DefiLlama). Body: { chain? }.",
+      "Total value locked, rank and dominance for a blockchain (or the top 10), from DefiLlama. Use when an agent needs to compare chains by DeFi size or gauge where activity concentrates, inside a market-structure or chain-selection workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use to compare blockchains by DeFi TVL and dominance. Omit chain for the top 10 ranking.",
+      input: "POST JSON: { chain? (e.g. base). Omit for top 10 }.",
+      output: "tvlUsd, rank, dominancePct.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
-      properties: { chain: { type: "string", description: "Chain name (e.g. base). Omit for top 10." } },
+      properties: { chain: { type: "string", description: "Chain name. Omit for top 10.", examples: ["base", "ethereum"] } },
       required: [],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        chain: { type: "string" },
-        tvlUsd: { type: "number" },
-        rank: { type: "number" },
-        dominancePct: { type: "number" },
+        found: { type: "boolean", description: "Whether the chain was found." },
+        chain: { type: "string", description: "Chain name." },
+        tvlUsd: { type: "number", description: "Chain TVL in USD." },
+        rank: { type: "number", description: "Rank by TVL." },
+        dominancePct: { type: "number", description: "Share of total DeFi TVL, percent." },
       },
     },
   },
   {
     key: "gas",
     path: "/api/gas",
-    title: "Gas Oracle",
+    title: "EVM Gas Oracle",
     description:
-      "Current gas price (gwei) on an EVM chain via on-chain read. Body: { chain } (eth, bnb, base).",
+      "Current gas price in gwei for an EVM chain, read directly on-chain. Use when an agent needs to estimate transaction cost or decide timing before broadcasting a transaction, inside an execution workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use to estimate transaction cost or pick a low-gas moment before sending a tx on eth, bnb, or base.",
+      input: "POST JSON: { chain (eth|bnb|base, default base) }.",
+      output: "gasPriceGwei, maxFeePerGasGwei.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
-      properties: { chain: { type: "string", description: "eth, bnb, or base." } },
+      properties: { chain: { type: "string", description: "eth, bnb, or base.", examples: ["base", "eth"] } },
       required: [],
     },
     outputSchema: {
       type: "object",
       properties: {
-        chain: { type: "string" },
-        gasPriceGwei: { type: "number" },
-        maxFeePerGasGwei: { type: "number" },
+        chain: { type: "string", description: "Chain queried." },
+        gasPriceGwei: { type: "number", description: "Current gas price in gwei." },
+        maxFeePerGasGwei: { type: "number", description: "Suggested max fee per gas in gwei." },
       },
     },
   },
   {
     key: "ens",
     path: "/api/ens",
-    title: "ENS Resolver",
+    title: "ENS Name Resolver",
     description:
-      "Resolve ENS name to address or reverse-resolve address to name (Ethereum mainnet). Body: { query }.",
+      "Resolve an ENS name to its address, or reverse-resolve an address to its primary ENS name, on Ethereum mainnet. Use when an agent needs to turn a human-readable name into an address (or vice versa) before paying, labeling, or displaying a counterparty.",
+    agentGuidance: {
+      whenToUse:
+        "Use to convert vitalik.eth <-> 0x address. Accepts either direction in one 'query' field.",
+      input: "POST JSON: { query (ENS name like 'name.eth' OR an address 0x...) }.",
+      output: "name, address, found.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
-      properties: { query: { type: "string", description: "ENS name (xxx.eth) or address (0x...)." } },
+      properties: { query: { type: "string", description: "ENS name (xxx.eth) or address (0x...).", examples: ["vitalik.eth"] } },
       required: ["query"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        name: { type: "string" },
-        address: { type: "string" },
+        found: { type: "boolean", description: "Whether resolution succeeded." },
+        name: { type: "string", description: "ENS name." },
+        address: { type: "string", description: "Resolved address." },
       },
     },
   },
@@ -190,116 +261,151 @@ export const CATALOG: CatalogItem[] = [
     path: "/api/supply",
     title: "Token Supply Info",
     description:
-      "ERC-20 token name, symbol, decimals and total supply via on-chain read. Body: { token, chain }.",
+      "Name, symbol, decimals and total supply for an ERC-20 token, read directly on-chain. Use when an agent needs authoritative token metadata and supply (not market-derived) before calculating amounts, market cap, or verifying a token.",
+    agentGuidance: {
+      whenToUse:
+        "Use for on-chain token metadata and exact total supply. For price/liquidity use /api/price; for both plus safety use /api/snapshot.",
+      input: "POST JSON: { token (contract), chain (eth|bnb|base) }.",
+      output: "name, symbol, decimals, totalSupply (raw string).",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        token: { type: "string", description: "Token contract address." },
-        chain: { type: "string", description: "eth, bnb, base." },
+        token: { type: "string", description: "Token contract address (0x...).", examples: ["0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"] },
+        chain: { type: "string", description: "eth, bnb, base.", examples: ["bnb"] },
       },
       required: ["token", "chain"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        found: { type: "boolean" },
-        symbol: { type: "string" },
-        decimals: { type: "number" },
-        totalSupply: { type: "string" },
+        found: { type: "boolean", description: "Whether the token was read." },
+        symbol: { type: "string", description: "Token symbol." },
+        decimals: { type: "number", description: "Token decimals." },
+        totalSupply: { type: "string", description: "Total supply (raw integer string)." },
       },
     },
   },
   {
     key: "sanctions",
     path: "/api/sanctions",
-    title: "Wallet Sanctions Screen",
+    title: "Wallet OFAC Sanctions Screen",
     description:
-      "Screen an EVM wallet against the OFAC SDN crypto address list (PASS/BLOCK). Body: { address }.",
+      "Screen an EVM wallet against the OFAC SDN crypto address list and return a clear PASS or BLOCK. Use when an agent must run a compliance check before sending funds to, or accepting funds from, a counterparty address. A pure compliance gate.",
+    agentGuidance: {
+      whenToUse:
+        "Use as a compliance gate before transacting with an address. For a fuller risk read (activity, whale, contract) use /api/wallet.",
+      input: "POST JSON: { address (0x...) }.",
+      output: "verdict (PASS|BLOCK), sanctioned (boolean).",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
-      properties: { address: { type: "string", description: "EVM wallet address." } },
+      properties: { address: { type: "string", description: "EVM wallet address (0x...).", examples: ["0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"] } },
       required: ["address"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        address: { type: "string" },
-        verdict: { type: "string", enum: ["PASS", "BLOCK"] },
-        sanctioned: { type: "boolean" },
+        address: { type: "string", description: "Address screened." },
+        verdict: { type: "string", enum: ["PASS", "BLOCK"], description: "PASS = not sanctioned, BLOCK = on OFAC SDN list." },
+        sanctioned: { type: "boolean", description: "True if on the OFAC list." },
       },
     },
   },
   {
     key: "snapshot",
     path: "/api/snapshot",
-    title: "Token Snapshot",
+    title: "Token Snapshot (price + supply + safety)",
     description:
-      "One-call token snapshot: market (price, liquidity, volume), on-chain supply, and GoPlus safety flags with a quick OK/CAUTION/DANGER read. Replaces chaining price + supply + safety into one call. Body: { token, chain } (eth, bnb, base).",
+      "One call that combines market data (price, liquidity, volume), on-chain supply, and GoPlus safety flags into a single OK / CAUTION / DANGER read. Use when an agent needs a complete go/no-go picture of a token without chaining three separate calls. The fastest token due-diligence primitive; ideal as the first step of any 'should I touch this token' workflow.",
+    agentGuidance: {
+      whenToUse:
+        "Use as the default first call when evaluating an unknown token. Replaces chaining /api/price + /api/supply + a safety check.",
+      input: "POST JSON: { token (contract), chain (eth|bnb|base) }.",
+      output: "safetyVerdict (OK|CAUTION|DANGER|UNKNOWN), riskFlags[], plus market{}, supply{}, safety{} objects.",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        token: { type: "string", description: "Token contract address." },
-        chain: { type: "string", description: "eth, bnb, base." },
+        token: { type: "string", description: "Token contract address (0x...).", examples: ["0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"] },
+        chain: { type: "string", description: "eth, bnb, base.", examples: ["bnb"] },
       },
       required: ["token", "chain"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        safetyVerdict: { type: "string", enum: ["OK", "CAUTION", "DANGER", "UNKNOWN"] },
-        riskFlags: { type: "array", items: { type: "string" } },
-        market: { type: "object" },
-        supply: { type: "object" },
-        safety: { type: "object" },
+        safetyVerdict: { type: "string", enum: ["OK", "CAUTION", "DANGER", "UNKNOWN"], description: "Quick go/no-go read." },
+        riskFlags: { type: "array", items: { type: "string" }, description: "Human-readable risk reasons." },
+        market: { type: "object", description: "Price, liquidity, volume." },
+        supply: { type: "object", description: "On-chain supply and metadata." },
+        safety: { type: "object", description: "GoPlus safety detail." },
       },
     },
   },
   {
     key: "wallet",
     path: "/api/wallet",
-    title: "Wallet Profile",
+    title: "Wallet Risk Profile",
     description:
-      "On-chain wallet profile from direct RPC reads plus OFAC screening: native balance, tx count (activity level), contract-vs-EOA status, sanctions verdict, whale flag, and a heuristic wallet score (0-100). Body: { wallet, chain } (eth, bnb, base). Snapshot only; wallet age and DeFi/bridge/NFT history need an indexer and are not included.",
+      "A snapshot risk profile of an EVM wallet from direct RPC reads plus OFAC screening: native balance, transaction count and activity level, contract-vs-EOA status, sanctions verdict, whale flag, and a heuristic 0-100 wallet score. Use when an agent needs to assess a counterparty wallet before transacting. Snapshot only: wallet age and DeFi/bridge/NFT history require an indexer and are not included.",
+    agentGuidance: {
+      whenToUse:
+        "Use to assess a counterparty wallet (is it active, a whale, a contract, sanctioned). For a pure compliance pass/block use /api/sanctions.",
+      input: "POST JSON: { wallet (0x...), chain (eth|bnb|base) }.",
+      output: "walletScore (0-100), isWhale, sanctioned, txCount, activityLevel, flags[].",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        wallet: { type: "string", description: "EVM wallet address." },
-        chain: { type: "string", description: "eth, bnb, base." },
+        wallet: { type: "string", description: "EVM wallet address (0x...).", examples: ["0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"] },
+        chain: { type: "string", description: "eth, bnb, base.", examples: ["eth"] },
       },
       required: ["wallet", "chain"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        walletScore: { type: "number" },
-        isWhale: { type: "boolean" },
-        sanctioned: { type: "boolean" },
-        txCount: { type: "number" },
-        activityLevel: { type: "string" },
-        flags: { type: "array", items: { type: "string" } },
+        walletScore: { type: "number", description: "Heuristic risk/quality score 0-100." },
+        isWhale: { type: "boolean", description: "Large native balance." },
+        sanctioned: { type: "boolean", description: "On OFAC list." },
+        txCount: { type: "number", description: "Transaction count (nonce)." },
+        activityLevel: { type: "string", description: "e.g. dormant, low, active, high." },
+        flags: { type: "array", items: { type: "string" }, description: "Risk/quality flags." },
       },
     },
   },
   {
     key: "derivatives",
     path: "/api/derivatives",
-    title: "Multi-Exchange Derivatives",
+    title: "Multi-Exchange Perp Funding & Open Interest",
     description:
-      "Perp funding rate + open interest for a coin across Binance, Bybit, OKX, and Hyperliquid in one call. Funding normalized to annualized APR for fair cross-venue comparison, plus funding spread (arbitrage/divergence signal), total OI in USD, and a funding-based sentiment read (crowded long/short). Body: { symbol } (e.g. BTC, ETH, SOL). Public exchange data; heuristic signals, not financial advice.",
+      "Perpetual funding rate and open interest for a coin across Binance, Bybit, OKX and Hyperliquid in a single call, with funding normalized to annualized APR for fair cross-venue comparison, the funding spread between venues (a funding-arbitrage / divergence signal), total open interest in USD, and a funding-based sentiment read (crowded long / short). Use when an agent needs derivatives positioning to gauge market sentiment, detect crowding, or spot a cross-venue funding edge before taking or sizing a position. Public exchange data; signals are heuristic, not financial advice.",
+    agentGuidance: {
+      whenToUse:
+        "Use to read perp positioning for a coin: is funding crowded long/short, and is there a fundable spread between exchanges. Pair with /api/feargreed for market-wide sentiment.",
+      input: "POST JSON: { symbol (e.g. BTC, ETH, SOL) }.",
+      output: "venues[] (per-exchange funding APR + OI), aggregate (avg funding APR, total OI, sentiment), fundingSpread (high vs low venue), signals[].",
+      paymentFlow: PAYFLOW,
+    },
     inputSchema: {
       type: "object",
       properties: {
-        symbol: { type: "string", description: "Coin symbol, e.g. BTC, ETH, SOL." },
+        symbol: { type: "string", description: "Coin symbol (base asset, no USDT suffix).", examples: ["BTC", "ETH", "SOL"] },
       },
       required: ["symbol"],
     },
     outputSchema: {
       type: "object",
       properties: {
-        venues: { type: "array" },
-        aggregate: { type: "object" },
-        fundingSpread: { type: "object" },
-        signals: { type: "array", items: { type: "string" } },
+        venues: { type: "array", description: "Per-exchange funding APR, interval, and open interest in USD." },
+        aggregate: { type: "object", description: "venuesReporting, avgFundingAprPct, totalOpenInterestUsd, sentiment." },
+        fundingSpread: { type: "object", description: "Highest vs lowest funding venue and the spread in APR percent." },
+        signals: { type: "array", items: { type: "string" }, description: "Heuristic flags (crowding, large spread)." },
       },
     },
   },
