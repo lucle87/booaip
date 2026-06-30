@@ -414,6 +414,37 @@ export const CATALOG: CatalogItem[] = [
       },
     },
   },
+  {
+    key: "signal",
+    path: "/api/signal",
+    title: "Trade Signal & Analysis",
+    description:
+      "Decision-support trade signal for a coin: a transparent composite of technicals (RSI, SMA20/50, trend, volatility from 1h klines), derivatives positioning (funding, OI, long/short), and market sentiment (fear & greed). Returns a bias (bullish/bearish/neutral lean), a composite score, and a factor-by-factor breakdown with reasoning so an agent can verify the logic, plus risk flags. Heuristic and transparent, NOT financial advice and NOT a prediction. Body: { symbol } (e.g. BTC, ETH, SOL).",
+    agentGuidance: {
+      whenToUse:
+        "Use when an agent wants a synthesized read on a coin to inform its OWN trade decision: combines momentum, positioning, and sentiment into one call. The agent decides and executes itself; this endpoint does not place orders. Pull /api/derivatives or /api/price directly if you only need raw data.",
+      input: "POST JSON: { symbol } (e.g. BTC, ETH, SOL).",
+      output:
+        "signal { bias (bullish_lean|bearish_lean|neutral), score (-100..100), factors[] each with reading/contribution/why }, technicals, derivatives, marketSentiment, riskFlags[], dataUsed[].",
+      paymentFlow:
+        "First call returns HTTP 402 with an x402 payment requirement (USDC on Base). Pay with an x402 client, then retry the same request to get 200.",
+    },
+    inputSchema: {
+      type: "object",
+      properties: { symbol: { type: "string", description: "Coin symbol, e.g. BTC, ETH, SOL.", examples: ["BTC", "ETH", "SOL"] } },
+      required: ["symbol"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        signal: { type: "object", description: "bias, score, and transparent factor breakdown." },
+        technicals: { type: "object", description: "RSI, SMA20/50, trend, volatility, 24h/7d change." },
+        derivatives: { type: "object", description: "Condensed funding/OI/long-short read." },
+        marketSentiment: { type: "object", description: "Fear & greed." },
+        riskFlags: { type: "array", items: { type: "string" }, description: "Risk warnings (volatility, extreme funding/RSI)." },
+      },
+    },
+  },
 ];
 
 export function priceOf(key: string): string {
