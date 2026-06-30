@@ -56,12 +56,21 @@ function volatilityPct(closes: number[], lookback = 24): number | null {
 
 async function getKlines(symbol: string): Promise<Kline[] | null> {
   const s = symbol.toUpperCase() + "USDT";
-  // 1h, 200 nen (du cho SMA50 + ~7 ngay)
-  const url = "https://fapi.binance.com/fapi/v1/klines?symbol=" + s + "&interval=1h&limit=200";
-  const raw = await fetchJsonSafe<any[]>(url, { timeoutMs: 5000 });
-  if (!Array.isArray(raw) || !raw.length) return null;
-  // Binance tra mang cac mang; close o vi tri 4 (chuoi). Chuyen so.
-  return raw.map((k) => k.map((x: any) => (typeof x === "string" ? Number(x) : x)));
+  // Thu nhieu host: data-api.binance.vision (public market data, KHONG bi chan IP
+  // datacenter nhu fapi), roi spot api, roi fapi futures. Format klines y het nhau
+  // (mang cac mang, close o vi tri 4). Host nao tra duoc thi dung.
+  const urls = [
+    "https://data-api.binance.vision/api/v3/klines?symbol=" + s + "&interval=1h&limit=200",
+    "https://api.binance.com/api/v3/klines?symbol=" + s + "&interval=1h&limit=200",
+    "https://fapi.binance.com/fapi/v1/klines?symbol=" + s + "&interval=1h&limit=200",
+  ];
+  for (const url of urls) {
+    const raw = await fetchJsonSafe<any[]>(url, { timeoutMs: 7000 });
+    if (Array.isArray(raw) && raw.length) {
+      return raw.map((k) => k.map((x: any) => (typeof x === "string" ? Number(x) : x)));
+    }
+  }
+  return null;
 }
 
 type Factor = { name: string; reading: string; contribution: number; why: string };
