@@ -393,7 +393,7 @@ export const CATALOG: CatalogItem[] = [
       whenToUse:
         "Use to read perp positioning for a coin: is funding crowded long/short, and is there a fundable spread between exchanges. Pair with /api/feargreed for market-wide sentiment.",
       input: "POST JSON: { symbol (e.g. BTC, ETH, SOL) }.",
-      output: "venues[] (per-exchange funding APR + OI), aggregate (avg funding APR, total OI, sentiment), retailPositioning (Binance long/short account ratio), fundingSpread (high vs low venue), signals[].",
+      output: "venues[] (per-exchange funding APR, OI, 24h volume, mark price, basis %, next funding time), aggregate (avg funding APR, total OI, total 24h volume, sentiment), retailPositioning (Binance long/short account ratio), fundingSpread (high vs low venue), signals[].",
       paymentFlow: PAYFLOW,
     },
     inputSchema: {

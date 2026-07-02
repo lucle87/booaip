@@ -23,6 +23,9 @@ type Venue = {
   fundingAprPct: number | null;
   openInterestUsd: number | null;
   markPrice: number | null;
+  volume24hUsd: number | null;
+  nextFundingTime: number | null;
+  basisPct: number | null;
   ok: boolean;
 };
 
@@ -32,22 +35,31 @@ function aprPct(rate: number | null, intervalHours: number): number | null {
   return Number((rate * periodsPerYear * 100).toFixed(2));
 }
 
+function basisPct(mark: number | null, index: number | null): number | null {
+  if (mark == null || index == null || index === 0) return null;
+  return Number((((mark - index) / index) * 100).toFixed(3));
+}
+
 function dead(ex: string, ivl: number): Venue {
-  return { exchange: ex, fundingRate: null, fundingIntervalHours: ivl, fundingAprPct: null, openInterestUsd: null, markPrice: null, ok: false };
+  return { exchange: ex, fundingRate: null, fundingIntervalHours: ivl, fundingAprPct: null, openInterestUsd: null, markPrice: null, volume24hUsd: null, nextFundingTime: null, basisPct: null, ok: false };
 }
 
 async function binance(sym: string): Promise<Venue> {
   try {
     const s = sym + "USDT";
-    const [pi, oi] = await Promise.all([
+    const [pi, oi, tk] = await Promise.all([
       getJson("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=" + s),
       getJson("https://fapi.binance.com/fapi/v1/openInterest?symbol=" + s),
+      getJson("https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=" + s).catch(() => null),
     ]);
     const rate = pi?.lastFundingRate != null ? Number(pi.lastFundingRate) : null;
     const mark = pi?.markPrice != null ? Number(pi.markPrice) : null;
+    const index = pi?.indexPrice != null ? Number(pi.indexPrice) : null;
     const oiCoin = oi?.openInterest != null ? Number(oi.openInterest) : null;
     const oiUsd = oiCoin != null && mark != null ? oiCoin * mark : null;
-    return { exchange: "binance", fundingRate: rate, fundingIntervalHours: 8, fundingAprPct: aprPct(rate, 8), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, ok: rate != null };
+    const vol = tk?.quoteVolume != null ? Number(tk.quoteVolume) : null;
+    const nft = pi?.nextFundingTime ? Number(pi.nextFundingTime) : null;
+    return { exchange: "binance", fundingRate: rate, fundingIntervalHours: 8, fundingAprPct: aprPct(rate, 8), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, volume24hUsd: vol != null ? Math.round(vol) : null, nextFundingTime: nft, basisPct: basisPct(mark, index), ok: rate != null };
   } catch { return dead("binance", 8); }
 }
 
@@ -85,20 +97,29 @@ async function bybit(sym: string): Promise<Venue> {
     const ivl = t?.fundingIntervalHour ? Number(t.fundingIntervalHour) : 8;
     const oiUsd = t?.openInterestValue != null && t.openInterestValue !== "" ? Number(t.openInterestValue) : null;
     const mark = t?.markPrice != null && t.markPrice !== "" ? Number(t.markPrice) : null;
-    return { exchange: "bybit", fundingRate: rate, fundingIntervalHours: ivl, fundingAprPct: aprPct(rate, ivl), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, ok: rate != null };
+    const index = t?.indexPrice != null && t.indexPrice !== "" ? Number(t.indexPrice) : null;
+    const vol = t?.turnover24h != null && t.turnover24h !== "" ? Number(t.turnover24h) : null;
+    const nft = t?.nextFundingTime ? Number(t.nextFundingTime) : null;
+    return { exchange: "bybit", fundingRate: rate, fundingIntervalHours: ivl, fundingAprPct: aprPct(rate, ivl), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, volume24hUsd: vol != null ? Math.round(vol) : null, nextFundingTime: nft, basisPct: basisPct(mark, index), ok: rate != null };
   } catch { return dead("bybit", 8); }
 }
 
 async function okx(sym: string): Promise<Venue> {
   try {
     const inst = sym + "-USDT-SWAP";
-    const [fr, oi] = await Promise.all([
+    const [fr, oi, tk] = await Promise.all([
       getJson("https://www.okx.com/api/v5/public/funding-rate?instId=" + inst),
       getJson("https://www.okx.com/api/v5/public/open-interest?instId=" + inst),
+      getJson("https://www.okx.com/api/v5/market/ticker?instId=" + inst).catch(() => null),
     ]);
     const rate = fr?.data?.[0]?.fundingRate != null ? Number(fr.data[0].fundingRate) : null;
     const oiUsd = oi?.data?.[0]?.oiUsd != null ? Number(oi.data[0].oiUsd) : null;
-    return { exchange: "okx", fundingRate: rate, fundingIntervalHours: 8, fundingAprPct: aprPct(rate, 8), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: null, ok: rate != null };
+    const t = tk?.data?.[0];
+    const last = t?.last != null && t.last !== "" ? Number(t.last) : null;
+    const volCcy = t?.volCcy24h != null && t.volCcy24h !== "" ? Number(t.volCcy24h) : null;
+    const vol = volCcy != null && last != null ? volCcy * last : null;
+    const nft = fr?.data?.[0]?.nextFundingTime ? Number(fr.data[0].nextFundingTime) : null;
+    return { exchange: "okx", fundingRate: rate, fundingIntervalHours: 8, fundingAprPct: aprPct(rate, 8), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: last, volume24hUsd: vol != null ? Math.round(vol) : null, nextFundingTime: nft, basisPct: null, ok: rate != null };
   } catch { return dead("okx", 8); }
 }
 
@@ -116,9 +137,12 @@ async function hyperliquid(sym: string): Promise<Venue> {
     const c = ctxs[idx] || {};
     const rate = c?.funding != null ? Number(c.funding) : null;
     const mark = c?.markPx != null ? Number(c.markPx) : null;
+    const oracle = c?.oraclePx != null ? Number(c.oraclePx) : null;
     const oiCoin = c?.openInterest != null ? Number(c.openInterest) : null;
     const oiUsd = oiCoin != null && mark != null ? oiCoin * mark : null;
-    return { exchange: "hyperliquid", fundingRate: rate, fundingIntervalHours: 1, fundingAprPct: aprPct(rate, 1), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, ok: rate != null };
+    const vol = c?.dayNtlVlm != null ? Number(c.dayNtlVlm) : null;
+    const nft = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+    return { exchange: "hyperliquid", fundingRate: rate, fundingIntervalHours: 1, fundingAprPct: aprPct(rate, 1), openInterestUsd: oiUsd != null ? Math.round(oiUsd) : null, markPrice: mark, volume24hUsd: vol != null ? Math.round(vol) : null, nextFundingTime: nft, basisPct: basisPct(mark, oracle), ok: rate != null };
   } catch { return dead("hyperliquid", 1); }
 }
 
@@ -156,6 +180,7 @@ async function computeDerivatives(sym: string) {
   }
 
   const totalOiUsd = ok.reduce((s, v) => s + (v.openInterestUsd || 0), 0);
+  const totalVol = venues.reduce((s, v) => s + (v.volume24hUsd || 0), 0);
 
   const signals: string[] = [];
   if (spread && Math.abs(spread.spreadPct) >= 30) {
@@ -186,17 +211,21 @@ async function computeDerivatives(sym: string) {
       fundingIntervalHours: v.fundingIntervalHours,
       fundingAprPct: v.fundingAprPct,
       openInterestUsd: v.openInterestUsd,
+      volume24hUsd: v.volume24hUsd,
       markPrice: v.markPrice,
+      basisPct: v.basisPct,
+      nextFundingTime: v.nextFundingTime,
     })),
     aggregate: {
       venuesReporting: ok.length,
       avgFundingAprPct: avgApr,
       totalOpenInterestUsd: totalOiUsd || null,
+      totalVolume24hUsd: totalVol || null,
       sentiment,
     },
     retailPositioning: retail,
     fundingSpread: spread,
     signals,
-    note: "Funding normalized to annualized APR for cross-venue comparison (CEX charge ~8h, Hyperliquid hourly). Open interest in USD (Binance/Hyperliquid derived from contracts x mark price; Bybit/OKX report USD directly). retailPositioning is Binance global long/short ACCOUNT ratio (>1 = more accounts long). Sentiment/signals are heuristic, not financial advice. Data from public exchange APIs; a venue or signal is omitted if unavailable.",
+    note: "Funding normalized to annualized APR for cross-venue comparison (CEX charge ~8h, Hyperliquid hourly). Open interest in USD (Binance/Hyperliquid derived from contracts x mark price; Bybit/OKX report USD directly). retailPositioning is Binance global long/short ACCOUNT ratio (>1 = more accounts long). Sentiment/signals are heuristic, not financial advice. volume24hUsd is 24h perp turnover per venue; basisPct is (mark-index)/index (premium/discount); nextFundingTime is a unix-ms timestamp. Data from public exchange APIs; a venue, field or signal is omitted if unavailable.",
   };
 }
